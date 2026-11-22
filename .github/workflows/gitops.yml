@@ -1,0 +1,37 @@
+name: Approved GitOps
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+    paths: ['infra/**']
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    if: github.event.pull_request.merged == true
+    environment: p18-apply
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    env:
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      TF_VAR_bucket_name: ${{ vars.S3_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.2
+      - name: Terraform init
+        run: terraform init -input=false -backend-config="bucket=$TF_VAR_bucket_name"
+      - name: Terraform plan
+        run: terraform plan -input=false -out=tfplan
+      - name: Apply HTML to S3
+        run: terraform apply -input=false tfplan
